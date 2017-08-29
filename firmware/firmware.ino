@@ -1,8 +1,13 @@
 #include <Servo.h>
 
-#define M1_STEP_PIN 13
-#define M1_ENABLE_PIN 10
-#define M1_DIR_PIN 12
+#define PISTON_STEP_PIN 2
+#define PISTON_ENABLE_PIN 4
+#define PISTON_DIR_PIN 3
+#define MASS_STEP_PIN 5
+#define MASS_ENABLE_PIN 7
+#define MASS_DIR_PIN 6
+
+
 
 using namespace std;
 
@@ -63,47 +68,47 @@ class engine
 
     int stopMovee() //Возвращает 1 если закрыт Front концевик, 2 если закрыт Back концевик, 0 если остановка не нужна
     {
-      if ( this->getFrontPinVal() != FrontPinMode ) //Может случится ошибка когда pin концевика задан, но не задан его режим
+      if ( FrontPinMode != -1 && this->getFrontPinVal() != FrontPinMode ) //Если режим датчиков не установлен, то считается, что их нет
       {
         return 1;
       }
-      if ( this->getBackPinVal() != BackPinMode )
+      if ( BackPinMode != -1 && this->getBackPinVal() != BackPinMode )
       {
         return 2;
       }
       return 0;
     }
 
-    void Calibration(int MinAngle, int speedDiv)
+    // Do move while engine don't come to front end 
+    void moveToFront(int MinStep, int speedDiv) 
+    { 
+      while ( this->stopMovee() != 1 ) 
+      { 
+        if (stepEngine == 0) 
+        { 
+          this->movee(MinStep, speedDiv); 
+        }
+      }
+      TurnMax = turn;
+    } 
+
+    // Do move while engine don't come to back end 
+    void moveToBack(int MinStep, int speedDiv) 
+    { 
+      while ( this->stopMovee() != 2 ) 
+      { 
+        if (stepEngine == 0) 
+        { 
+          this->movee(-MinStep, speedDiv); 
+        }
+      }
+      TurnMin = turn;
+    }
+
+    void Calibration(int MinStep, int speedDiv)
     {
-      TurnMax=0;
-      TurnMin=0;
-      if (FrontPin == - 1 && BackPin == -1)
-      {
-        return;
-      }
-      if (FrontPin != -1)
-      {
-        while ( !(this->stopMovee()) )
-        {
-          if (stepEngine == 0)
-          {
-            this->movee(MinAngle,speedDiv);
-            TurnMax += MinAngle;
-          }
-        }
-      }
-     if (BackPin != -1)
-      {
-        while ( !(this->stopMovee()) )
-        {
-          if (stepEngine == 0)
-          {
-            this->movee(-MinAngle,speedDiv);
-            TurnMin -= MinAngle;
-          }
-        }
-      }
+      this->moveToFront(MinStep,speedDiv);
+      this->moveToBack(MinStep,speedDiv);
     }
 
     // Return speed divider
@@ -131,16 +136,7 @@ class engine
       stepEngine += 1;
       turn -= 1;
     }
-    /* Изменить название функции т.к. stop это стандартная ф-ция, да и вообще зачем плодить сущности без необходимости
-     *  можно использовать функиции movee и resetSD для обнуления
-    //Emergency stop
-    void stop ()
-    {
-      stepEngine = 0;
-      speedDivider = 0;
-      sD = 0;
-    }
-    */
+    
     // Set angle and speed of move and start
     void movee(int stepEn, unsigned int sd)
     {
@@ -151,7 +147,7 @@ class engine
 
     void engineStepPos()
     {
-      int checkMovee=0;//this->stopMovee();
+      int checkMovee=this->stopMovee();
       if (checkMovee != 1){
         switcher = !switcher;
         digitalWrite(DirectionPin, HIGH);
@@ -167,7 +163,7 @@ class engine
 
     void engineStepNeg()
     {
-      int checkMovee=0;//this->stopMovee();
+      int checkMovee=this->stopMovee();
       if (checkMovee != 2){
         switcher = !switcher;
         digitalWrite(DirectionPin, LOW);
@@ -197,6 +193,40 @@ class engine
       speedDivider = 0;
       sD = 0; 
     }
+
+    int getTurnMax()
+    {
+      return TurnMax;
+    }
+    int getTurnMin()
+    {
+      return TurnMin;
+    }
+
+    void interr()
+    {
+      if ( getStep() != 0 )
+      {
+        dicSD(); //Counter for speed divider
+      }
+      
+      // In one side
+      if ( getStep()>0 && (getSD() % (2*getSpeedE()) == 0) )
+      {
+        engineStepPos(); // Move in positive direction
+      }
+    
+      // In other side
+      if ( getStep()<0 && (getSD() % (2*getSpeedE()) == 0) )
+      {
+        engineStepNeg(); // Move in negative direction
+      }
+      
+      if ( !getSD() )
+      {
+        resetSD();
+      }    
+    }
   protected:
     
     int turn;
@@ -219,62 +249,42 @@ class engine
 
 
 // Object installization. Set number of pins (StepPin, EnablePin, DirectionPin)
-engine piston(13, 10, 12);
+engine piston(PISTON_STEP_PIN,PISTON_ENABLE_PIN,PISTON_DIR_PIN, A0, A1, 0, 0);
 engine fin();
-engine mass();
+engine mass(MASS_STEP_PIN,MASS_ENABLE_PIN,MASS_DIR_PIN, A2, A3, 0, 0);
 
 
 void setup()
 {
   Serial.begin(9600);
-  engine piston(13, 10, 12);
-  engine fin();
-  engine mass();
   piston.installization();
-cli(); 
-TCCR2A = 0;// set entire TCCR2A register to 0 
-TCCR2B = 0;// same for TCCR2B 
-TCNT2 = 0;//initialize counter value to 0 
-// set compare match register for 8khz increments 
-OCR2A = 249;// = (16*10^6) / (8000*8) - 1 (must be <256) 
-// turn on CTC mode 
-TCCR2A |= (1 << WGM21); 
-// Set CS21 bit for 8 prescaler 
-TCCR2B |= (1 << CS21); 
-// enable timer compare interrupt 
-TIMSK2 |= (1 << OCIE2A); 
-sei();
+  mass.installization();
+  OCR0A = 0xAF; // If we want max speed, we can reduce the timer time by 2 times, because we increased the number of interrupts by 2 times
+  TIMSK0 |= _BV(OCIE0A);
+  //piston.Calibration(10,1);
 }
 
 
 SIGNAL(TIMER0_COMPA_vect)
 {
-  if (piston.getStep() != 0 )
-  {
-    piston.dicSD(); //Counter for speed divider  
-  }
-  // In one side
-  if ( piston.getStep()>0 && (piston.getSD() % (2*piston.getSpeedE()) == 0) )
-  {
-    piston.engineStepPos(); // Move in positive direction
-    
-  }
-  // In other side
-  if ( piston.getStep()<0 && (piston.getSD() % (2*piston.getSpeedE()) == 0) )
-  {
-    piston.engineStepNeg(); // Move in negative direction
-  }
-  if ( !piston.getSD() )
-  {
-    piston.resetSD();
-  }
-  Serial.println(piston.getStep());
+  piston.interr();
+  mass.interr();
 }
 
 void loop()
 {
-  piston.movee(800, 1);
+  /*
+  Serial.print(piston.getTurnMax());
+  Serial.print(" ");
+  Serial.println(piston.getTurnMin());
   delay(1000);
-  piston.movee(-800, 1);
+  */
+  piston.movee(50,1);
   delay(1000);
+  mass.movee(-50,1);
+  delay(1000);
+  piston.movee(-50,1);
+  delay(1000);
+  mass.movee(50,1);
+  delay(2000);
 }
