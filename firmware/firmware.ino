@@ -140,7 +140,7 @@ class engine
     // Set angle and speed of move and start
     void movee(int stepEn, unsigned int sd)
     {
-      stepEngine = stepEn;
+      stepEngine = 2*stepEn;
       speedDivider = sd;
       sD = 2*abs(stepEngine)*speedDivider;
     }
@@ -279,12 +279,11 @@ void loop()
   Serial.println(piston.getTurnMin());
   delay(1000);
   */
-  piston.movee(50,1);
-  delay(1000);
-  mass.movee(-50,1);
-  delay(1000);
-  piston.movee(-50,1);
-  delay(1000);
-  mass.movee(50,1);
+  piston.movee(200,2);
+  mass.movee(-200,1);
   delay(2000);
+  piston.movee(-200,1);
+  mass.movee(200,2);
+  delay(2000);
+
 }
