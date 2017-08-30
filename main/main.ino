@@ -25,9 +25,9 @@
 #include <Bridge.h>
 #include <BridgeServer.h>
 #include <BridgeClient.h>
-#include "../../sensor/I2Cdev.h"
-#include "../../sensor/MPU6050.h"
-#include "../../sensor/Wire.h"
+#include "I2Cdev.h"
+#include "MPU6050.h"
+#include "Wire.h"
 
 #define DIGITAL_PINS_NUMBER_YUN 14
 #define ANALOG_PINS_NUMBER_YUN 6
@@ -35,6 +35,10 @@
 #define MAX_LEN_COMMAND_BUF 20
 
 
+MPU6050 accelgyro;
+int16_t ax, ay, az;
+double fi, teta;
+int16_t intFi, intTeta;
 // Listen to the default port 5555, the Yún webserver will forward there all the HTTP requests you send
 BridgeServer server;
 
@@ -42,9 +46,31 @@ void setup() {
   Bridge.begin();
   server.listenOnLocalhost();
   server.begin();
+  accelgyro.initialize();
+}
+
+  //возвращает угол интовый в градусах
+void getAngles(double* fi, double* teta, int16_t ax, int16_t ay, int16_t az){
+    double ax_d =(double) ax, ay_d = (double) ay, az_d = (double) az;
+    *fi = atan(ay_d/ax_d);
+//    if(az_d < 0){
+//      az_d = fabs(az_d);
+//    }
+    *teta = atan( (double) sqrt((ax_d*ax_d + ay_d*ay_d))/az_d);
+}
+ 
+void ToInt(double fi, double teta, int* fi_i, int* teta_i){
+  *fi_i = (int16_t) round(fi*180/3.14);
+  *teta_i = (int16_t) round(teta*180/3.14);
 }
 
 void loop() {
+  
+
+  accelgyro.getAcceleration(&ax,&ay,&az);
+  getAngles(&fi, &teta, ax, ay, az);
+  ToInt(fi,teta,&intFi,&intTeta);
+  
   // Get clients coming from server
   BridgeClient client = server.accept();
 
@@ -179,6 +205,7 @@ void gliderstatus(BridgeClient client) {
     D[i] = digitalRead(i);
     client.print(D[i]);
     client.print(F(" "));
+    
   }
   for (int i=0; i < ANALOG_PINS_NUMBER_YUN; i++) {
     A[i] = analogRead(i);
@@ -186,6 +213,11 @@ void gliderstatus(BridgeClient client) {
     client.print(F(" "));
   }
   client.println();
+
+
+
+  client.println(intFi);
+  client.println(intTeta);
 }
 
 void dive(BridgeClient client) {
